@@ -1,7 +1,7 @@
 # ttkTextNotebook
 - Shared Text Widget in the style of Tkinter's Notebook Widget
 
-~**FEATURES**~
+**FEATURES**
 - [x] Support Shared scrollable Text widget
 - [x] Support Scrollable Tabs
 - [ ] Support Load File
