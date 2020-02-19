@@ -11,6 +11,11 @@ class TextNotebook(ttk.Frame):
     __config_tab_active = None
     __config_tab_inactive = None
 
+    CURRENT = "current"
+    FIRST = 'first'
+    LAST = 'last'
+    ALL = 'all'
+
     def __initialize_custom_style(self):
         TextNotebook.__style = ttk.Style()
         TextNotebook.__style.configure('TextNotebook.Tabs.TFrame', background='gray69')
@@ -20,6 +25,7 @@ class TextNotebook(ttk.Frame):
                 'activebackground':'gray69',
                 'borderwidth':2, 
                 'pady':5, 
+                'padx':10, 
                 'disabledforeground':'black',
                 'state':DISABLED, 
                 'font':'Helvetica 8 bold'
@@ -29,17 +35,18 @@ class TextNotebook(ttk.Frame):
                 'activebackground':'gray79',
                 'borderwidth':1, 
                 'pady':2, 
+                'padx':10, 
                 'disabledforeground':'black',
                 'state':NORMAL, 
                 'font':'Helvetica 8'
                 }
 
-    def __init__(self,parent,*args,**kwargs):
+    def __init__(self,master=None,*args,**kwargs):
         if not TextNotebook.__inititialized:
             self.__initialize_custom_style()
             TextNotebook.__inititialized = True
 
-        ttk.Frame.__init__(self, parent, *args)
+        ttk.Frame.__init__(self, master, *args)
 
         self._topFrame = ttk.Frame(master=self)
         self._topFrame.pack(fill=X, pady=0)
@@ -125,11 +132,11 @@ class TextNotebook(ttk.Frame):
                 if tab_id in tabs:
                     tab = tab_id
             elif isinstance(tab_id, str):
-                if tab_id == "current":
+                if tab_id == TextNotebook.CURRENT:
                     tab = self._selected
-                elif tab_id == "first":
+                elif tab_id == TextNotebook.FIRST:
                     tab = tabs[0]
-                elif tab_id == "last":
+                elif tab_id == TextNotebook.LAST:
                     tab = tabs[-1]
             else:
                 el = [x for x in tabs if x._id == tab_id]
@@ -150,6 +157,7 @@ class TextNotebook(ttk.Frame):
         if self._selected == None:
             self._tabs_select(tab)
         self.event_generate("<<NotebookTabAdd>>", data={"widget" : self, "id" : tab._id})
+        return tab
 
     def _tabs_remove(self,tab_id):
         tab = self._tabs_find(tab_id)
@@ -160,7 +168,14 @@ class TextNotebook(ttk.Frame):
                 index = self._tabs().index(tab)
             tab.destroy()
             if index:
+                self._selected = None
                 self._tabs_select(min(index, len(self.tabs()) - 1))
+        elif tab_id == TextNotebook.ALL:
+            tabs = self._tabs()
+            for tab in tabs:
+                tab.destroy()
+            self._selected = None
+            self._tabs_slide_reset()
     
     def _tabs_select(self,tab_id):
         tab = self._tabs_find(tab_id)
@@ -210,7 +225,7 @@ class TextNotebook(ttk.Frame):
         self._tabs_select(tab_id)
 
     def add(self,tab_id,**kwargs):
-        self._tabs_add(tab_id,**kwargs)
+        return self._tabs_add(tab_id,**kwargs)
 
     def forget(self,tab_id):
         self._tabs_remove(tab_id)
