@@ -14,7 +14,14 @@ class TextNotebook(ttk.Frame):
     CURRENT = "current"
     FIRST = 'first'
     LAST = 'last'
+    END = 'end'
     ALL = 'all'
+
+    # options
+    ID = 'id'
+    TEXT = 'text'
+    CONTENT = 'content'
+    SCROLL = 'scroll'
 
     def __initialize_custom_style(self):
         TextNotebook.__style = ttk.Style()
@@ -25,13 +32,14 @@ class TextNotebook(ttk.Frame):
                 'activebackground':'gray69',
                 'borderwidth':2, 
                 'pady':5, 
-                'padx':10, 
+                'padx':8, 
                 'disabledforeground':'black',
                 'state':DISABLED, 
                 'font':'Helvetica 8 bold'
                 }
         TextNotebook.__config_tab_inactive = {
                 'bg':'gray69',
+                'foreground':'gray24',
                 'activebackground':'gray79',
                 'borderwidth':1, 
                 'pady':2, 
@@ -61,10 +69,12 @@ class TextNotebook(ttk.Frame):
         self._navFrame.pack(side=RIGHT, pady=0)
 
         self._tabFrame = ttk.Frame(master=self._topFrame)
+        self._tabFrame.bind('<Configure>', self._tabs_configure)
         self._tabFrame.pack(fill=BOTH, expand=True)
 
         self._selected = None
         self._location = 0
+        self._tabsCount = 0
         self._tabsFrame = ttk.Frame(master=self._tabFrame)
         self._tabsFrame.place(x=0, y=0, bordermode="inside")
 
@@ -109,6 +119,7 @@ class TextNotebook(ttk.Frame):
     
     def _tabs_slide_to(self,tab_id):
         if self._tabsFrame.winfo_width() > self._tabFrame.winfo_width():
+            self._tabFrame.update()
             tab = self._tabs_find(tab_id)
             if tab:
                 start = -self._location
@@ -121,6 +132,10 @@ class TextNotebook(ttk.Frame):
                     self._location=-y+self._tabFrame.winfo_width()
                 self._tabsFrame.place(x=self._location,y=0)
 
+    def _tabs_configure(self, event):
+        if self._selected:
+           self._tabs_slide_to(self._selected)
+
     def _tabs(self):
         return self._tabsFrame.winfo_children()
 
@@ -131,15 +146,14 @@ class TextNotebook(ttk.Frame):
             if isinstance(tab_id, Button):
                 if tab_id in tabs:
                     tab = tab_id
-            elif isinstance(tab_id, str):
-                if tab_id == TextNotebook.CURRENT:
-                    tab = self._selected
-                elif tab_id == TextNotebook.FIRST:
-                    tab = tabs[0]
-                elif tab_id == TextNotebook.LAST:
-                    tab = tabs[-1]
+            elif isinstance(tab_id, str) and tab_id == TextNotebook.CURRENT:
+                tab = self._selected
+            elif isinstance(tab_id, str) and tab_id == TextNotebook.FIRST:
+                tab = tabs[0]
+            elif isinstance(tab_id, str) and tab_id == TextNotebook.LAST or tab_id == TextNotebook.END:
+                tab = tabs[-1]
             else:
-                el = [x for x in tabs if x._id == tab_id]
+                el = [x for x in tabs if x.options[TextNotebook.ID] == tab_id]
                 if len(el):
                     tab= el[0]
                 elif isinstance(tab_id, int):
@@ -147,49 +161,109 @@ class TextNotebook(ttk.Frame):
                         tab = tabs[tab_id]
         return tab
 
+    def _tabs_new(self, options):
+        if TextNotebook.ID in options and TextNotebook.TEXT in options and TextNotebook.CONTENT in options and TextNotebook.SCROLL in options:
+            self._tabsCount += 1
+            tab = Button(master=self._tabsFrame,text=options[TextNotebook.TEXT], relief=GROOVE, justify=LEFT)
+            tab.options = options
+            tab.bind("<Button-1>", self._tabs_select_event)
+            tab.config(cnf=TextNotebook.__config_tab_inactive)
+            tab.pack(side=LEFT)
+            return tab
+        return None
+    
+    def _tabs_options(self,tab_id,**kwargs):
+        tab = self._tabs_find(tab_id)
+        if tab:
+            option = None
+            for key, value in kwargs.items():
+                if value:
+                    if key == TextNotebook.TEXT:
+                        if isinstance(value, str):
+                            tab.options[key] = value
+                            tab['text'] = value
+                    elif key == TextNotebook.CONTENT:
+                        if isinstance(value, str):
+                            tab.options[key] = value
+                    elif key == TextNotebook.SCROLL:
+                        print("Error scroll can not be changed")
+                    else:
+                        tab.options[key] = value
+                else:
+                    option = key
+
+            if tab == self._selected:
+                tab.options[TextNotebook.SCROLL] = self._content.yview()[0]
+                if kwargs.get(TextNotebook.CONTENT):
+                    self._selected = None
+                    self._tabs_select(tab)
+
+            if option:
+                if option in tab.options:
+                    return tab.options[option]
+            else:
+                return tab.options
+        return None
+
     def _tabs_add(self,tab_id,**kwargs):
-        tab = Button(master=self._tabsFrame,text=kwargs.pop('text', str(tab_id)), relief=GROOVE, justify=LEFT)
-        tab._id = tab_id
-        tab._content = kwargs.pop('content', None)
-        tab.bind("<Button-1>", self._tabs_select_event)
-        tab.config(cnf=TextNotebook.__config_tab_inactive)
-        tab.pack(side=LEFT)
+        options = { 
+                TextNotebook.ID : tab_id, 
+                TextNotebook.TEXT : kwargs.pop('text', str(tab_id)), 
+                TextNotebook.CONTENT : kwargs.pop('content', None), 
+                TextNotebook.SCROLL : 0.0 
+        }
+        for key, value in kwargs.items():
+            options[key] = value
+        tab = self._tabs_new(options)
         if self._selected == None:
             self._tabs_select(tab)
-        self.event_generate("<<NotebookTabAdd>>", data={"widget" : self, "id" : tab._id})
+        self.event_generate("<<NotebookTabAdd>>", data={"widget" : self, "id" : tab.options[TextNotebook.ID], "tab" : tab})
         return tab
 
     def _tabs_remove(self,tab_id):
-        tab = self._tabs_find(tab_id)
-        if tab:
-            self.event_generate("<<NotebookTabRemove>>", data={"widget" : self, "id" : tab._id})
-            index = None
-            if tab == self._selected:
-                index = self._tabs().index(tab)
-            tab.destroy()
-            if index:
-                self._selected = None
-                self._tabs_select(min(index, len(self.tabs()) - 1))
-        elif tab_id == TextNotebook.ALL:
+        if isinstance(tab_id, str) and tab_id == TextNotebook.ALL:
             tabs = self._tabs()
             for tab in tabs:
                 tab.destroy()
             self._selected = None
+            self._tabsCount = 0
+            self._content.delete('1.0', END)
             self._tabs_slide_reset()
+            self.event_generate("<<NotebookTabRemoveAll>>", data={"widget" : self})
+        else:
+            tab = self._tabs_find(tab_id)
+            if tab:
+                self.event_generate("<<NotebookTabRemove>>", data={"widget" : self, "id" : tab.options[TextNotebook.ID], "tab" : tab})
+                self._tabsCount -= 1
+                index = None
+                if tab == self._selected:
+                    index = self._tabs().index(tab)
+                tab.destroy()
+                if index:
+                    self._selected = None
+                    self._content.delete('1.0', END)
+                    self._tabs_select(min(index, len(self.tabs()) - 1))
     
     def _tabs_select(self,tab_id):
         tab = self._tabs_find(tab_id)
         if tab and tab != self._selected:
             if self._selected:
+                self._selected.options[TextNotebook.SCROLL] = self._content.yview()[0]
                 self._selected.config(cnf=TextNotebook.__config_tab_inactive)
             self._selected = tab
             self._selected.config(cnf=TextNotebook.__config_tab_active)
             self._content.delete('1.0', END)
-            if hasattr(tab, "_content") and tab._content:
-                self._content.insert(INSERT, tab._content)
+            if TextNotebook.CONTENT in self._selected.options and self._selected.options[TextNotebook.CONTENT]:
+                self._content.insert(INSERT, self._selected.options[TextNotebook.CONTENT])
                 self._content.mark_set(INSERT, '1.0')
             self._tabs_slide_to(tab_id)
-            self.event_generate("<<NotebookTabChanged>>", data={"widget" : self, "id" : tab._id, "selected" : tab})
+            self.event_generate("<<NotebookTabChanged>>", data={"widget" : self, "id" : tab.options[TextNotebook.ID], "selected" : tab})
+            try:
+                self._content.yview_moveto(self._selected.options[TextNotebook.SCROLL])
+                self._content.yview_moveto(self._selected.options[TextNotebook.SCROLL])
+            except Exception as exception:
+                print(exception)
+        return self._selected
 
     def _tabs_select_event(self,event):
         self._tabs_select(event.widget)
@@ -202,32 +276,76 @@ class TextNotebook(ttk.Frame):
         self._contentScrollbar.set(first, last)
         self.event_generate("<<NotebookScroll>>", data={"widget" : self})
     
+    def dump(self):
+        dump_tabs = []
+        tabs = self._tabs()
+        for tab in tabs:
+            dump_tabs.append(self._tabs_options(tab))
+        dump = {
+            'tabs' : dump_tabs,
+            'selected' : self.tab(self._selected, option=TextNotebook.ID)
+        }
+        return dump
+
+    def restore(self, dump):
+        if isinstance(dump, dict):
+            if 'tabs' in dump and isinstance(dump['tabs'], list):
+                self._tabs_remove(ALL)
+                for options in dump['tabs']:
+                    self._tabs_new(options)
+            selected_tab_id = FIRST
+            if 'selected' in dump and dump['selected']:
+                selected_tab_id = dump['selected']
+            self._tabsFrame.update()
+            self._tabs_select(selected_tab_id)
+
     def content(self):
         return self._content
 
-    def selected(self):
-        return self._selected
-
     def index(self,tab_id):
-        tab = self._tabs_find(tab_id)
-        if tab:
-            return self._tabs().index(tab)
+        """Returns the numeric index of the tab specified by tab_id, or
+        the total number of tabs if tab_id is the string "end"."""
+        if isinstance(tab_id, str) and tab_id == TextNotebook.END:
+            return self._tabsCount
         else:
-            return None
+            tab = self._tabs_find(tab_id)
+            if tab:
+                return self._tabs().index(tab)
+            else:
+                return -1
+
+    def select(self, tab_id=None):
+        """Selects the specified tab.
+
+        The associated child window will be displayed, and the
+        previously-selected window (if different) is unmapped. If tab_id
+        is omitted, returns the widget name of the currently selected
+        pane."""
+        return self._tabs_select(tab_id)
 
     def tabs(self):
+        """Returns a list of windows managed by the notebook."""
         return self._tabs()
 
-    def tab(self, tab_id):
-        return self._tabs_find(tab_id)
+    def tab(self, tab_id, option=None, **kwargs):
+        """Query or modify the options of the specific tab_id.
 
-    def select(self,tab_id):
-        self._tabs_select(tab_id)
+        If kw is not given, returns a dict of the tab option values. If option
+        is specified, returns the value of that option. Otherwise, sets the
+        options to the corresponding values."""
+        if option is not None:
+            kwargs[option] = None
+        return self._tabs_options(tab_id, **kwargs)
 
     def add(self,tab_id,**kwargs):
+        """Adds a new tab to the notebook.
+
+        """
         return self._tabs_add(tab_id,**kwargs)
 
     def forget(self,tab_id):
+        """Removes the tab specified by tab_id, unmaps and unmanages the
+        associated window."""
         self._tabs_remove(tab_id)
 
 # Test:
@@ -238,12 +356,13 @@ def _test():
     notebook=TextNotebook(root)
     notebook.add("frame1",text="I am Tab One", content="This is some text")
     notebook.add("frame2",text="I am Tab Two", content="This is some other text")
-    notebook.add("frame3",text="I am Tab Three")
-    notebook.add("frame4",text="I am Tab Four")
-    notebook.add("frame4",text="I am Tab Five")
-    notebook.add("frame4",text="I am Tab Six")
-    notebook.add("frame4",text="I Forgot How to Count")
-    notebook.pack(fill="both",expand=True)
+    notebook.add("frame3",text="I am Tab Three", content="I am Tab Three text")
+    notebook.add("frame4",text="I am Tab Four", content="I am Tab Four text")
+    notebook.add("frame5",text="I am Tab Five", content="I am Tab Five text")
+    notebook.add("frame6",text="I am Tab Six")
+    notebook.add("frame7",text="I Forgot How to Count")
+    notebook.pack(fill=BOTH,expand=True)
+    root.geometry('1080x1080')
     root.mainloop()
 
 if __name__ == '__main__':
